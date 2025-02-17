@@ -2,40 +2,57 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const TelegramBot = require('node-telegram-bot-api');
 
-// توکن ربات خود را وارد کنید
+// توکن ربات شما
 const token = '8192923916:AAFTExMMUB6mLaBarLdQRPolLJpa2GPEcZc';
 
-// شناسه چت ادمین (شما)
-const adminChatId = '2048310529';  // شناسه چت ادمین (شما)
+// شناسه چت ادمین
+const adminChatId = '2048310529';  // شناسه چت ادمین
 
-// ایجاد ربات تلگرام
 const bot = new TelegramBot(token, { polling: true });
 
-// ایجاد سرور Express
 const app = express();
 app.use(bodyParser.json());
 
-// زمانی که کاربر به ربات پیام می‌دهد
+// ذخیره شناسه کاربر و پیام برای فوروارد کردن بعدی
+let userMessages = {};
+
+// هنگامی که یک کاربر به ربات پیام می‌دهد
 bot.on('message', (msg) => {
   const userId = msg.chat.id;
   const userMessage = msg.text;
-  
-  // ارسال پیام به ادمین
-  bot.sendMessage(adminChatId, `کاربر جدید پیام فرستاده: \n${userMessage}\n\nبرای پاسخ به این پیام، لطفاً به آن ریپلای کنید.`);
-  
-  // ذخیره شناسه پیام و شناسه کاربر برای فوروارد کردن پاسخ بعدی
-  bot.on('message', (msg) => {
-    if (msg.reply_to_message && msg.reply_to_message.text) {
-      const replyToMessageId = msg.reply_to_message.message_id;
-      const originalUserId = msg.reply_to_message.chat.id;
-      
-      // وقتی ادمین به پیام ریپلای می‌دهد، پیام ریپلای را فوروارد می‌کنیم
-      bot.sendMessage(originalUserId, `پاسخ از ادمین: ${msg.text}`);
-    }
-  });
 
-  // ارسال تاییدیه به کاربر
-  bot.sendMessage(userId, 'پیام شما ارسال شد و در حال بررسی است.');
+  // اگر پیام از ادمین نباشد، پیام را به ادمین ارسال می‌کنیم
+  if (userId !== adminChatId) {
+    userMessages[userId] = userMessage; // ذخیره پیام کاربر
+
+    // ارسال پیام به ادمین
+    bot.sendMessage(adminChatId, `پیام جدید از کاربر ${userId}:\n${userMessage}\n\nبرای پاسخ دادن به این پیام، لطفاً ریپلای کنید.`);
+
+    // ارسال تاییدیه به کاربر
+    bot.sendMessage(userId, 'پیام شما ارسال شد و در حال بررسی است.');
+  }
+});
+
+// زمانی که ادمین به پیام ریپلای می‌دهد
+bot.on('message', (msg) => {
+  // اگر پیام از طرف ادمین باشد و به یک پیام ریپلای کند
+  if (msg.reply_to_message && msg.chat.id === adminChatId) {
+    const replyMessage = msg.text;
+    const originalUserId = msg.reply_to_message.chat.id;
+
+    // ارسال پاسخ به کاربر (فقط اگر کاربر شناخته شده باشد)
+    if (userMessages[originalUserId]) {
+      bot.sendMessage(originalUserId, `پاسخ از ادمین: ${replyMessage}`);
+    }
+  }
+});
+
+// فرمان /start
+bot.onText(/\/start/, (msg) => {
+  const userId = msg.chat.id;
+  
+  // ارسال پیام خوشامدگویی به کاربر
+  bot.sendMessage(userId, 'سلام! خوش آمدید به ربات ما. برای ارسال پیام به ادمین، کافی است پیام خود را وارد کنید.');
 });
 
 // راه‌اندازی سرور Express
