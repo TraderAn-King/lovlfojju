@@ -9,206 +9,152 @@ app.get("/", (req, res) => {
     res.send("✅ Bot is running...");
 });
 
-// اطلاعات ربات
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const DOWNLOAD_LINK = "https://t.me/Anime_Faarsi";
 const ADMIN_ID = 2048310529;
-const CHANNEL_USERNAME = "@Anime_Faarsi";
-
-// راه‌اندازی ربات
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-let blockedUsers = new Set();
-let users = loadUsers();
-let messages = loadMessages(); // بارگذاری پیام‌ها
+let lockedChannels = {};
+let lockedGroups = {};
+let warnings = {}; // سیستم اخطار
+let badWords = ["کلمه۱", "کلمه۲", "کلمه۳"]; // لیست کلمات نامناسب
+let lockMedia = false; // قفل ارسال مدیا
 
-// بارگذاری کاربران از فایل
-function loadUsers() {
+// بررسی اینکه آیا ربات ادمین است؟
+async function isBotAdmin(chatId) {
     try {
-        return JSON.parse(fs.readFileSync("user.json", "utf8"));
-    } catch (error) {
-        return [];
-    }
-}
-
-// ذخیره کاربران
-function saveUsers() {
-    fs.writeFileSync("user.json", JSON.stringify(users, null, 2));
-}
-
-// بارگذاری پیام‌های ربات
-function loadMessages() {
-    try {
-        return JSON.parse(fs.readFileSync("messages.json", "utf8"));
-    } catch (error) {
-        return {
-            start: "👋 خوش آمدید! برای جستجوی انیمه نام آن را ارسال کنید.",
-            blocked: "❌ شما مسدود شده‌اید.",
-            no_result: "⚠️ انیمه‌ای با این نام پیدا نشد.",
-            subscribe: `⚠️ ابتدا در کانال عضو شوید:\n👉 ${DOWNLOAD_LINK}`
-        };
-    }
-}
-
-// ذخیره پیام‌های ربات
-function saveMessages() {
-    fs.writeFileSync("messages.json", JSON.stringify(messages, null, 2));
-}
-
-// بررسی عضویت کاربر در کانال
-async function checkUserSubscription(userId) {
-    try {
-        const member = await bot.getChatMember(CHANNEL_USERNAME, userId);
-        return ["member", "administrator", "creator"].includes(member.status);
+        const admins = await bot.getChatAdministrators(chatId);
+        return admins.some(admin => admin.user.id === (await bot.getMe()).id);
     } catch (error) {
         return false;
     }
 }
 
-// مدیریت دستورات ادمین
-bot.onText(/\/start/, async (msg) => {
+// 🔒 قفل کردن کانال
+bot.onText(/\/addchannel (.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const userId = msg.from.id;
+    const channelUsername = match[1];
 
-    if (!users.includes(userId)) {
-        users.push(userId);
-        saveUsers();
+    if (!channelUsername.startsWith("@")) {
+        return bot.sendMessage(chatId, "❌ لطفا یوزرنیم کانال را با @ وارد کنید!");
     }
 
-    if (userId === ADMIN_ID) {
-        bot.sendMessage(chatId, "👨‍💻 *پنل مدیریت*", {
-            parse_mode: "Markdown",
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "📊 آمار کاربران", callback_data: "stats" }],
-                    [{ text: "📢 ارسال پیام همگانی", callback_data: "broadcast" }],
-                    [{ text: "💬 تغییر پیام‌های ربات", callback_data: "edit_messages" }]
-                ]
-            }
-        });
+    if (await isBotAdmin(channelUsername)) {
+        lockedChannels[channelUsername] = true;
+        bot.sendMessage(chatId, `✅ کانال ${channelUsername} قفل شد!`);
     } else {
-        const isSubscribed = await checkUserSubscription(userId);
-        if (!isSubscribed) {
-            bot.sendMessage(chatId, messages.subscribe, {
-                reply_markup: {
-                    inline_keyboard: [[{ text: "عضویت در کانال", url: DOWNLOAD_LINK }]]
-                }
-            });
-            return;
-        }
-        bot.sendMessage(chatId, messages.start);
+        bot.sendMessage(chatId, `❌ ربات در کانال ${channelUsername} ادمین نیست!`);
     }
 });
 
-// دریافت نام انیمه از کاربر
+// 🔒 قفل کردن گروه
+bot.onText(/\/addgroup (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const groupId = match[1];
+
+    if (await isBotAdmin(groupId)) {
+        lockedGroups[groupId] = true;
+        bot.sendMessage(chatId, `✅ گروه ${groupId} قفل شد!`);
+    } else {
+        bot.sendMessage(chatId, `❌ ربات در گروه ${groupId} ادمین نیست!`);
+    }
+});
+
+// ❌ حذف کانال یا گروه از لیست قفل‌شده‌ها
+bot.onText(/\/del_(.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const target = match[1];
+
+    if (lockedChannels[`@${target}`]) {
+        delete lockedChannels[`@${target}`];
+        bot.sendMessage(chatId, `❌ کانال @${target} از لیست حذف شد!`);
+    } else if (lockedGroups[target]) {
+        delete lockedGroups[target];
+        bot.sendMessage(chatId, `❌ گروه ${target} از لیست حذف شد!`);
+    } else {
+        bot.sendMessage(chatId, `❌ کانال یا گروه ${target} در لیست قفل نیست!`);
+    }
+});
+
+// 📌 بررسی حذف ممبر و حذف ادمین متخلف
 bot.on("message", async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
-    if (!msg.text || msg.text.startsWith("/")) return;
-
-    if (blockedUsers.has(userId) && userId !== ADMIN_ID) {
-        bot.sendMessage(chatId, messages.blocked);
-        return;
+    // بررسی عضویت در گروه‌ها و کانال‌های قفل‌شده
+    if (lockedChannels[chatId] || lockedGroups[chatId]) {
+        if (msg.left_chat_member) {
+            const adminId = msg.from.id;
+            try {
+                await bot.kickChatMember(chatId, adminId);
+                bot.sendMessage(chatId, `🚨 ادمین ${adminId} به دلیل حذف ممبر از گروه حذف شد!`);
+            } catch (error) {
+                bot.sendMessage(chatId, `❌ نمی‌توان ادمین ${adminId} را حذف کرد!`);
+            }
+        }
     }
 
-    const isSubscribed = await checkUserSubscription(userId);
-    if (!isSubscribed) {
-        bot.sendMessage(chatId, messages.subscribe);
-        return;
+    // Anti-Link: حذف پیام‌هایی که لینک دارند
+    if (msg.text && (msg.text.includes("http://") || msg.text.includes("https://") || msg.text.includes("t.me/"))) {
+        if (userId !== ADMIN_ID) {
+            await bot.deleteMessage(chatId, msg.message_id);
+            bot.sendMessage(chatId, `❌ ${msg.from.first_name} ارسال لینک در این گروه ممنوع است!`);
+        }
     }
 
-    const query = msg.text.trim();
-    const anime = await searchAnime(query);
-    if (anime) {
-        const genres = anime.genres.map(g => `#${g.replace(/\s/g, "_")}`).join(" ");
-        const caption = `🎬 *${anime.title.native}*\n\n*نام انگلیسی:* ${anime.title.english}\n*نام فارسی:* ${anime.title.romaji}\n📅 *سال انتشار:* ${anime.seasonYear}\n📊 *امتیاز:* ${anime.averageScore / 10}/10\n🎭 *ژانر:* ${genres}\n🎥 *تعداد قسمت‌ها:* ${anime.episodes}\n\n🔻 *شما می‌توانید این انیمه را با کلیک کردن روی دکمه پایین دانلود کنید:*`;
-
-        bot.sendPhoto(chatId, anime.coverImage.large, {
-            caption,
-            parse_mode: "Markdown",
-            reply_markup: {
-                inline_keyboard: [[{ text: "⬇️ دانلود انیمه", url: DOWNLOAD_LINK }]]
+    // Anti-Bot: حذف ربات‌هایی که اضافه می‌شوند
+    if (msg.new_chat_members) {
+        msg.new_chat_members.forEach(async (member) => {
+            if (member.is_bot) {
+                await bot.kickChatMember(chatId, member.id);
+                bot.sendMessage(chatId, `🤖 ربات ${member.first_name} به دلیل ممنوعیت ربات‌ها حذف شد!`);
             }
         });
-    } else {
-        bot.sendMessage(chatId, messages.no_result);
+    }
+
+    // Anti-BadWords: حذف پیام‌هایی که کلمات نامناسب دارند
+    if (msg.text && badWords.some(word => msg.text.includes(word))) {
+        await bot.deleteMessage(chatId, msg.message_id);
+        bot.sendMessage(chatId, `🚫 ${msg.from.first_name} لطفاً از استفاده از کلمات نامناسب خودداری کنید!`);
+    }
+
+    // Warn System: اخطار دادن به کاربران متخلف
+    if (!warnings[userId]) warnings[userId] = 0;
+    if (msg.text && badWords.some(word => msg.text.includes(word))) {
+        warnings[userId]++;
+        if (warnings[userId] >= 3) {
+            await bot.kickChatMember(chatId, userId);
+            bot.sendMessage(chatId, `❌ ${msg.from.first_name} به دلیل ۳ اخطار از گروه حذف شد!`);
+        } else {
+            bot.sendMessage(chatId, `⚠️ ${msg.from.first_name} شما ${warnings[userId]}/3 اخطار دریافت کرده‌اید!`);
+        }
+    }
+
+    // Lock Media: جلوگیری از ارسال فایل‌های خاص
+    if (lockMedia && (msg.photo || msg.video || msg.document)) {
+        await bot.deleteMessage(chatId, msg.message_id);
+        bot.sendMessage(chatId, `📵 ارسال مدیا در این گروه ممنوع است!`);
     }
 });
 
-// مدیریت دکمه‌های ادمین
-bot.on("callback_query", async (callback) => {
-    const chatId = callback.message.chat.id;
-
-    if (callback.data === "stats") {
-        bot.sendMessage(chatId, `📊 تعداد کل کاربران: ${users.length}`);
-    } else if (callback.data === "broadcast") {
-        bot.sendMessage(chatId, "📢 پیام موردنظر خود را ارسال کنید:");
-        bot.once("message", async (msg) => {
-            for (const userId of users) {
-                try {
-                    await bot.sendMessage(userId, `📢 پیام جدید:\n\n${msg.text}`);
-                } catch (error) {
-                    console.error(`❌ ارسال پیام به ${userId} ناموفق بود.`);
-                }
-            }
-            bot.sendMessage(chatId, "✅ پیام به همه کاربران ارسال شد.");
-        });
-    } else if (callback.data === "edit_messages") {
-        bot.sendMessage(chatId, "🔧 نام متنی که می‌خواهید تغییر دهید (start, blocked, no_result, subscribe):");
-        bot.once("message", (msg) => {
-            const key = msg.text;
-            if (!messages[key]) {
-                bot.sendMessage(chatId, "⚠️ متن نامعتبر است.");
-                return;
-            }
-            bot.sendMessage(chatId, "✏️ متن جدید را بفرستید:");
-            bot.once("message", (newMsg) => {
-                messages[key] = newMsg.text;
-                saveMessages();
-                bot.sendMessage(chatId, "✅ متن تغییر یافت.");
-            });
-        });
-    }
+// فعال یا غیرفعال کردن قفل ارسال مدیا
+bot.onText(/\/lockmedia (on|off)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    if (msg.from.id !== ADMIN_ID) return;
+    
+    lockMedia = match[1] === "on";
+    bot.sendMessage(chatId, `📵 قفل ارسال مدیا ${lockMedia ? "فعال" : "غیرفعال"} شد!`);
 });
 
-// تابع برای جستجوی انیمه در AniList
-async function searchAnime(query) {
-    const url = "https://graphql.anilist.co";
-    const queryData = {
-        query: `
-            query ($search: String) {
-                Media (search: $search, type: ANIME) {
-                    title {
-                        romaji
-                        english
-                        native
-                    }
-                    seasonYear
-                    episodes
-                    genres
-                    averageScore
-                    coverImage {
-                        large
-                    }
-                }
-            }
-        `,
-        variables: { search: query }
-    };
-
-    try {
-        const response = await axios.post(url, queryData);
-        return response.data.data.Media;
-    } catch (error) {
-        console.error("❌ Error fetching anime:", error);
-        return null;
-    }
-}
+// Welcome System: خوش‌آمدگویی به کاربران جدید
+bot.on("new_chat_members", (msg) => {
+    const chatId = msg.chat.id;
+    msg.new_chat_members.forEach((member) => {
+        bot.sendMessage(chatId, `👋 خوش آمدید ${member.first_name}! لطفاً قوانین گروه را رعایت کنید.`);
+    });
+});
 
 console.log("✅ ربات فعال شد...");
 
-// Render نیاز به یک پورت باز دارد
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
