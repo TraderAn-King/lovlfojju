@@ -5,8 +5,8 @@ const TelegramBot = require('node-telegram-bot-api');
 // توکن ربات خود را وارد کنید
 const token = '8192923916:AAFTExMMUB6mLaBarLdQRPolLJpa2GPEcZc';
 
-// شناسه چت فرد مشخص (شما)
-const targetChatId = '2048310529';  // شناسه چت فرد مشخص
+// شناسه چت ادمین (شما)
+const adminChatId = '2048310529';  // شناسه چت ادمین (شما)
 
 // ایجاد ربات تلگرام
 const bot = new TelegramBot(token, { polling: true });
@@ -19,25 +19,23 @@ app.use(bodyParser.json());
 bot.on('message', (msg) => {
   const userId = msg.chat.id;
   const userMessage = msg.text;
-
-  // ارسال پیام به شما (فرد مشخص)
-  bot.sendMessage(targetChatId, `پیام جدید از کاربر:\n${userMessage}`);
+  
+  // ارسال پیام به ادمین
+  bot.sendMessage(adminChatId, `کاربر جدید پیام فرستاده: \n${userMessage}\n\nبرای پاسخ به این پیام، لطفاً به آن ریپلای کنید.`);
+  
+  // ذخیره شناسه پیام و شناسه کاربر برای فوروارد کردن پاسخ بعدی
+  bot.on('message', (msg) => {
+    if (msg.reply_to_message && msg.reply_to_message.text) {
+      const replyToMessageId = msg.reply_to_message.message_id;
+      const originalUserId = msg.reply_to_message.chat.id;
+      
+      // وقتی ادمین به پیام ریپلای می‌دهد، پیام ریپلای را فوروارد می‌کنیم
+      bot.sendMessage(originalUserId, `پاسخ از ادمین: ${msg.text}`);
+    }
+  });
 
   // ارسال تاییدیه به کاربر
   bot.sendMessage(userId, 'پیام شما ارسال شد و در حال بررسی است.');
-});
-
-// زمانی که شما به پیام پاسخ می‌دهید
-app.post('/reply', (req, res) => {
-  const replyMessage = req.body.message;
-  
-  // ارسال پاسخ به فرد مشخص از طرف ربات
-  if (targetChatId) {
-    bot.sendMessage(targetChatId, replyMessage);
-    res.status(200).send('پیام ارسال شد!');
-  } else {
-    res.status(400).send('هیچ فرد مشخصی برای ارسال پیام پیدا نشد.');
-  }
 });
 
 // راه‌اندازی سرور Express
