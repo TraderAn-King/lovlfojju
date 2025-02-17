@@ -5,6 +5,9 @@ const TelegramBot = require('node-telegram-bot-api');
 // توکن ربات خود را وارد کنید
 const token = '8192923916:AAFTExMMUB6mLaBarLdQRPolLJpa2GPEcZc';
 
+// شناسه چت فرد مشخص (شما)
+const targetChatId = '2048310529';  // شناسه چت فرد مشخص
+
 // ایجاد ربات تلگرام
 const bot = new TelegramBot(token, { polling: true });
 
@@ -12,34 +15,28 @@ const bot = new TelegramBot(token, { polling: true });
 const app = express();
 app.use(bodyParser.json());
 
-// ذخیره شناسه چت کاربران
-let chatId = null;
-
 // زمانی که کاربر به ربات پیام می‌دهد
 bot.on('message', (msg) => {
   const userId = msg.chat.id;
   const userMessage = msg.text;
 
-  // ذخیره شناسه چت کاربر
-  chatId = userId;
+  // ارسال پیام به شما (فرد مشخص)
+  bot.sendMessage(targetChatId, `پیام جدید از کاربر:\n${userMessage}`);
 
-  // ارسال پیام به شما
-  bot.sendMessage(chatId, 'پیام شما ارسال شد، لطفاً منتظر پاسخ باشید.');
-
-  // ارسال پیام به خود شما
-  bot.sendMessage(توکن_ربات_شما, `کاربر جدید پیام فرستاده: \n${userMessage}`);
+  // ارسال تاییدیه به کاربر
+  bot.sendMessage(userId, 'پیام شما ارسال شد و در حال بررسی است.');
 });
 
-// زمانی که شما پاسخ می‌دهید
+// زمانی که شما به پیام پاسخ می‌دهید
 app.post('/reply', (req, res) => {
   const replyMessage = req.body.message;
   
-  // بررسی اینکه آیا شناسه چت ذخیره شده وجود دارد
-  if (chatId) {
-    bot.sendMessage(chatId, replyMessage);
+  // ارسال پاسخ به فرد مشخص از طرف ربات
+  if (targetChatId) {
+    bot.sendMessage(targetChatId, replyMessage);
     res.status(200).send('پیام ارسال شد!');
   } else {
-    res.status(400).send('هیچ کاربری برای ارسال پیام پیدا نشد.');
+    res.status(400).send('هیچ فرد مشخصی برای ارسال پیام پیدا نشد.');
   }
 });
 
