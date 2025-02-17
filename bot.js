@@ -4,7 +4,7 @@ const express = require("express");
 const app = express();
 
 // اطلاعات ربات (🔴 اینجا مقدار توکن و آیدی ادمین را مستقیماً وارد کن)
-const BOT_TOKEN = "توکن_ربات_اینجا";
+const BOT_TOKEN = "8192923916:AAFTExMMUB6mLaBarLdQRPolLJpa2GPEcZc";
 const ADMIN_ID = 2048310529; // آیدی ادمین خود را اینجا وارد کن
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
