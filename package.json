@@ -1,7 +1,7 @@
 {
   "name": "telegram-express-bot",
   "version": "1.0.0",
-  "description": "ربات تلگرام با استفاده از Express",
+  "description":   "hrllo",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
