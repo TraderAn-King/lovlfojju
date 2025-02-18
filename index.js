@@ -1,35 +1,60 @@
-const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
+const express = require("express");
+const axios = require("axios");
 
-// توکن ربات شما
-const token = '8192923916:AAFTExMMUB6mLaBarLdQRPolLJpa2GPEcZc';
+const app = express();
+app.use(express.json());
 
-const bot = new TelegramBot(token, { polling: true });
+const TOKEN = "YOUR_BOT_TOKEN"; // توکن رباتت را بگذار
+const ADMIN_ID = 2048310529; // آی‌دی ادمین
+const API_URL = `https://api.telegram.org/bot${TOKEN}`;
 
-// فرمان /fetch برای دانلود و ارسال فایل از URL
-bot.onText(/\/fetch (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const url = match[1]; // URL ارسالی توسط کاربر
+let userLinks = {}; // ذخیره لینک‌ها برای کاربران
 
-  try {
-    // دریافت اطلاعات فایل از URL
-    const response = await axios.get(url, { responseType: 'stream' });
+app.post("/", async (req, res) => {
+    const body = req.body;
+    if (!body.message) return res.sendStatus(200);
 
-    // نوع فایل و نام آن
-    const fileType = response.headers['content-type'];
-
-    // ارسال فایل به کاربر
-    if (fileType.startsWith('image')) {
-      bot.sendPhoto(chatId, response.data, { caption: `تصویر از ${url}` });
-    } else if (fileType.startsWith('video')) {
-      bot.sendVideo(chatId, response.data, { caption: `ویدیو از ${url}` });
-    } else if (fileType.startsWith('audio')) {
-      bot.sendAudio(chatId, response.data, { caption: `صدا از ${url}` });
+    const chatId = body.message.chat.id;
+    const text = body.message.text;
+    
+    if (text === "/start") {
+        await sendMessage(chatId, "به ربات همه‌کاره خوش آمدید!");
+    } else if (text === "/changeurl") {
+        userLinks[chatId] = [];
+        await sendMessage(chatId, "لینک بفرست.");
+    } else if (userLinks[chatId] && userLinks[chatId].length === 0 && isValidUrl(text)) {
+        userLinks[chatId].push(text);
+        await sendMessage(chatId, "بعدی بفرست.");
+    } else if (userLinks[chatId]) {
+        const index = userLinks[chatId].length + 1;
+        const linkMessage = `Episode_${index}: [${text}](${userLinks[chatId][0]})`;
+        await sendMessage(chatId, linkMessage, "Markdown");
+        userLinks[chatId].push(text);
     } else {
-      bot.sendDocument(chatId, response.data, { caption: `فایل از ${url}` });
+        await sendMessage(chatId, "دستور نامعتبر است.");
     }
-  } catch (error) {
-    console.error(error);
-    bot.sendMessage(chatId, 'خطا در دریافت فایل، لطفاً URL صحیح را ارسال کنید.');
-  }
+
+    res.sendStatus(200);
+});
+
+async function sendMessage(chatId, text, parseMode = "") {
+    await axios.post(`${API_URL}/sendMessage`, {
+        chat_id: chatId,
+        text,
+        parse_mode: parseMode || undefined,
+        disable_web_page_preview: true
+    });
+}
+
+function isValidUrl(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+app.listen(process.env.PORT || 3000, () => {
+    console.log("Bot is running...");
 });
