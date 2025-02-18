@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const TOKEN = "YOUR_BOT_TOKEN"; // توکن رباتت را بگذار
+const TOKEN = "8192923916:AAFTExMMUB6mLaBarLdQRPolLJpa2GPEcZc"; // توکن رباتت را بگذار
 const ADMIN_ID = 2048310529; // آی‌دی ادمین
 const API_URL = `https://api.telegram.org/bot${TOKEN}`;
 
